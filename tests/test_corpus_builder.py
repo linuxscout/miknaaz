@@ -23,6 +23,10 @@ import pandas as pd
 import qalsadi.analex
 import pyarabic.araby as araby
 import numpy as np
+
+sys.path.append("../")
+from miknaaz.corpus_builder import CorpusBuilder
+
 def grabargs():
     parser = argparse.ArgumentParser(description='Convert Quran Corpus into CSV format.')
     # add file name to import and filename to export
@@ -52,18 +56,19 @@ def calcul_stats(dataframe):
     total = df.shape[0]
     stats_list={
     "count":total,
-    "uniq roots":df['root'].nunique(),
-    "uniq lemmas":df['lemma'].nunique(),
+    "uniq roots":df['roots'].nunique(),
+    "uniq lemmas":df['lemmas'].nunique(),
     "uniq words":df['word'].nunique(),
-    "mean words by root":df[['word','root']].groupby('root').count().mean(),
-    "min words by root":df[['word','root']].groupby('root').count().min(),
-    "max words by root":df[['word','root']].groupby('root').count().max(),
-    "mean words by lemmas":df[['word','lemma']].groupby('lemma').count().mean(),
+    "mean words by root":df[['word','roots']].groupby('roots').count().mean(),
+    # ~ "min words by root":df[['word','root']].groupby('root').count().min(),
+    "max words by root":df[['word','roots']].groupby('roots').count().max(),
+    "mean words by lemmas":df[['word','lemmas']].groupby('lemmas').count().mean(),
     }
 
     dstats = pd.DataFrame.from_dict(stats_list, orient='index')
     
     return dstats
+    
 def main():
         
     args =grabargs()
@@ -71,53 +76,24 @@ def main():
     outfile = args.outfile
     all_stemmers = args.all
     lines =[]
+    # read data
+    df = pd.read_csv(filename, encoding="utf8", delimiter="\t")
+    # fill nan
+    df.fillna("", inplace=True)
+    print(df.shape)
+    print(df.head(20))
 
-    try:
-        with open(filename,) as inputfile:
-            for line in inputfile:
-                lines.append(line.decode('utf8'))
-      
-    except:
-        print " Can't Open the given File ", filename;
-        sys.exit();
-    analyzer = qalsadi.analex.Analex()
-    analyzer.disable_allow_cache_use()
-
-
-    #~ text = u"\n".join(lines[:10])
-    text = u"\n".join(lines)
-    text = araby.strip_tashkeel(text)
-    text = u" ".join(araby.tokenize(text, conditions=araby.is_arabicrange))
-
-    result = analyzer.check_text(text)
+    lemmer = CorpusBuilder()
+    # add word features into each row
+    df2 = df.merge(df['word'].apply(lambda s: pd.Series(lemmer.morph_suggestions(s))), 
+    left_index=True, right_index=True)
     
-    adapted_result = []
-    for word_analyz_list in result:
-        for word_analyz in word_analyz_list :
-            adapted_result.append(word_analyz.__dict__)
-            
-    df = pd.DataFrame(adapted_result)
-
-    # the original word is vocalized
-    # customize fields
-    df['lemma'] = df['original'].apply(araby.strip_tashkeel)
-    df['tag'] = df['type'].apply(lambda x: x.split(':')[0])
-
-    # choose fields
-    display = df[['word', 'root', 'lemma', 'stem','tag', 'original']]
-    #join originals into one field
-    dispgroup = display.groupby(['word', 'root', 'lemma', 'stem','tag'])['original'].apply(lambda x: u';'.join(list(set(list(x)))))
-    dispgroup = dispgroup.drop_duplicates()
-    dispgroup.to_csv(outfile,sep='\t',encoding='utf8')
-    
-    
-    # drop duplicata
-    # mmake stats on data
-    display = display[['word', 'root', 'lemma', 'stem','tag']].drop_duplicates()
-    x = calcul_stats(display)    
-    #~ print(x)
+    print(df2)
+    df2.to_csv(outfile ,sep='\t',encoding='utf8')    
+    x = calcul_stats(df2)  
+    print(x)
     x.to_csv(outfile+'.stats',sep='\t',encoding='utf8')
     print("Output data is stored in %s"%outfile)
-    print("Statistics data is stored in %s"%outfile+'stats')
+    print("Statistics data is stored in %s"%outfile+'.stats')
 if __name__ == '__main__':
     main()
